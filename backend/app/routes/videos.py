@@ -1,15 +1,20 @@
 import os
 import shutil
+import uuid
+
+from pathlib import Path
 
 from fastapi import (
     APIRouter,
     Depends,
     File,
+    HTTPException,
     UploadFile,
 )
 
 from sqlalchemy.orm import Session
 
+from ..config import UPLOAD_DIR
 from ..database import get_db
 from ..models import Video, Detection
 from ..services.video_processor import get_video_info
@@ -22,7 +27,6 @@ router = APIRouter(
 )
 
 
-UPLOAD_DIR = "uploads"
 
 os.makedirs(
     UPLOAD_DIR,
@@ -39,29 +43,62 @@ def upload_video(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    filename = file.filename
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="A filename is required.",
+        )
+
+    allowed_extensions = {
+        ".mp4",
+        ".mov",
+        ".avi",
+        ".mkv",
+        ".webm",
+    }
+
+    original_filename = Path(file.filename).name
+    extension = Path(original_filename).suffix.lower()
+
+    if extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Unsupported video format. "
+                "Allowed formats: "
+                + ", ".join(sorted(allowed_extensions))
+            ),
+        )
+
+    unique_filename = (
+        f"{uuid.uuid4().hex}{extension}"
+    )
 
     filepath = os.path.join(
         UPLOAD_DIR,
-        filename,
+        unique_filename,
     )
 
-    with open(
-        filepath,
-        "wb",
-    ) as buffer:
+    try:
+        with open(filepath, "wb") as buffer:
+            shutil.copyfileobj(
+                file.file,
+                buffer,
+            )
 
-        shutil.copyfileobj(
-            file.file,
-            buffer,
+        info = get_video_info(filepath)
+
+    except Exception as e:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid video file: {str(e)}",
         )
 
-    info = get_video_info(
-        filepath
-    )
-
     video = Video(
-        filename=filename,
+        filename=original_filename,
         filepath=filepath,
         duration=info["duration"],
         fps=info["fps"],
@@ -80,7 +117,6 @@ def upload_video(
         "fps": video.fps,
         "status": video.status,
     }
-
 
 # ==================================================
 # Analyze Video
