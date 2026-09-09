@@ -2,10 +2,9 @@ import cv2
 import pytesseract
 import re
 
-pytesseract.pytesseract.tesseract_cmd = (
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-)
+from ..config import TESSERACT_PATH
 
+pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 
 def is_reasonable_text(text: str) -> bool:
     text = text.strip()
