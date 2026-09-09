@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     HTTPException,
@@ -19,6 +20,7 @@ from ..database import get_db
 from ..models import Video, Detection
 from ..services.video_processor import get_video_info
 from ..services.analyzer import analyze_video
+from ..services.analysis_job import run_analysis_job
 
 
 router = APIRouter(
@@ -125,77 +127,40 @@ def upload_video(
 @router.post("/{video_id}/analyze")
 def analyze_uploaded_video(
     video_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    video = db.query(Video).filter(
-        Video.id == video_id
-    ).first()
-
-    if not video:
-        return {
-            "error": "Video not found"
-        }
-
-    # Remove previous detections
-    db.query(Detection).filter(
-        Detection.video_id == video.id
-    ).delete(
-        synchronize_session=False
+    video = (
+        db.query(Video)
+        .filter(Video.id == video_id)
+        .first()
     )
 
-    video.status = "processing"
-
-    db.commit()
-
-    try:
-
-        result = analyze_video(
-            video_path=video.filepath,
-            video_id=video.id,
-            db=db,
-            video_duration=video.duration or 0,
+    if not video:
+        raise HTTPException(
+            status_code=404,
+            detail="Video not found",
         )
 
-        video.description = result[
-            "description"
-        ]
+    if video.status == "processing":
+        raise HTTPException(
+            status_code=409,
+            detail="Video analysis is already in progress.",
+        )
 
-        video.status = "completed"
+    video.status = "processing"
+    db.commit()
 
-        db.commit()
+    background_tasks.add_task(
+        run_analysis_job,
+        video.id,
+    )
 
-        return {
-            "video_id": video.id,
-            "status": video.status,
-            "frames_processed": result[
-                "frames_processed"
-            ],
-            "detections_created": result[
-                "detections_created"
-            ],
-            "description": result[
-                "description"
-            ],
-            "ocr_results": result[
-                "ocr_results"
-            ],
-            "object_summary": result["object_summary"],
-            "scene_changes": result["scene_changes"],
-            "timeline": result["timeline"],
-        }
-
-    except Exception as e:
-
-        video.status = "failed"
-
-        db.commit()
-
-        return {
-            "video_id": video.id,
-            "status": "failed",
-            "error": str(e),
-        }
-
+    return {
+        "video_id": video.id,
+        "status": "processing",
+        "message": "Video analysis started.",
+    }
 
 # ==================================================
 # Get Video Detections

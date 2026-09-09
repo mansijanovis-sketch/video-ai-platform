@@ -1,10 +1,37 @@
+import re
+
 import cv2
 import pytesseract
-import re
 
 from ..config import TESSERACT_PATH
 
+
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+
+
+OCR_MAX_DIMENSION = 1600
+OCR_TIMEOUT_SECONDS = 10
+
+
+def resize_for_ocr(image):
+    height, width = image.shape[:2]
+
+    max_dimension = max(height, width)
+
+    if max_dimension <= OCR_MAX_DIMENSION:
+        return image
+
+    scale = OCR_MAX_DIMENSION / max_dimension
+
+    new_width = int(width * scale)
+    new_height = int(height * scale)
+
+    return cv2.resize(
+        image,
+        (new_width, new_height),
+        interpolation=cv2.INTER_AREA,
+    )
+
 
 def is_reasonable_text(text: str) -> bool:
     text = text.strip()
@@ -12,27 +39,27 @@ def is_reasonable_text(text: str) -> bool:
     if not text:
         return False
 
-    # Ignore extremely short fragments
     if len(text) < 4:
         return False
 
-    # Number of alphabetic characters
-    letters = sum(char.isalpha() for char in text)
+    letters = sum(
+        char.isalpha()
+        for char in text
+    )
 
-    # Number of alphanumeric characters
-    alphanumeric = sum(char.isalnum() for char in text)
+    alphanumeric = sum(
+        char.isalnum()
+        for char in text
+    )
 
     if letters < 2:
         return False
 
-    if len(text) > 0:
-        ratio = alphanumeric / len(text)
+    ratio = alphanumeric / len(text)
 
-        # Mostly symbols = probably OCR noise
-        if ratio < 0.50:
-            return False
+    if ratio < 0.50:
+        return False
 
-    # Reject obvious browser/UI garbage
     garbage_patterns = [
         r"^[<>@+\-_=~|]+$",
         r"^[A-Z]{1,3}$",
@@ -52,14 +79,11 @@ def extract_text(image_path: str) -> str:
     if image is None:
         return ""
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    image = resize_for_ocr(image)
 
-    gray = cv2.resize(
-        gray,
-        None,
-        fx=2,
-        fy=2,
-        interpolation=cv2.INTER_CUBIC,
+    gray = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2GRAY,
     )
 
     processed = cv2.threshold(
@@ -69,12 +93,20 @@ def extract_text(image_path: str) -> str:
         cv2.THRESH_BINARY + cv2.THRESH_OTSU,
     )[1]
 
-    data = pytesseract.image_to_data(
-        processed,
-        lang="eng",
-        config="--psm 11",
-        output_type=pytesseract.Output.DICT,
-    )
+    try:
+        data = pytesseract.image_to_data(
+            processed,
+            lang="eng",
+            config="--psm 11",
+            output_type=pytesseract.Output.DICT,
+            timeout=OCR_TIMEOUT_SECONDS,
+        )
+
+    except RuntimeError as error:
+        print(
+            f"OCR timed out for {image_path}: {error}"
+        )
+        return ""
 
     lines = {}
 
@@ -88,31 +120,31 @@ def extract_text(image_path: str) -> str:
             continue
 
         try:
-            confidence = float(data["conf"][i])
+            confidence = float(
+                data["conf"][i]
+            )
         except (ValueError, TypeError):
             continue
 
         if confidence < 55:
             continue
 
-        block_num = data["block_num"][i]
-        par_num = data["par_num"][i]
-        line_num = data["line_num"][i]
-
         key = (
-            block_num,
-            par_num,
-            line_num,
+            data["block_num"][i],
+            data["par_num"][i],
+            data["line_num"][i],
         )
 
         if key not in lines:
             lines[key] = []
 
-        lines[key].append({
-            "text": text,
-            "confidence": confidence,
-            "left": data["left"][i],
-        })
+        lines[key].append(
+            {
+                "text": text,
+                "confidence": confidence,
+                "left": data["left"][i],
+            }
+        )
 
     valid_lines = []
 
@@ -143,7 +175,6 @@ def extract_text(image_path: str) -> str:
 
         valid_lines.append(line_text)
 
-    # Remove duplicates
     unique_lines = []
     seen = set()
 
