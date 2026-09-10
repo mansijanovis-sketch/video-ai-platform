@@ -31,6 +31,57 @@ FRAMES_DIR = os.getenv(
 )
 
 
+SMART_SAMPLING_ENABLED = os.getenv(
+    "SMART_SAMPLING_ENABLED",
+    "true",
+).strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+
+SMART_SAMPLING_COARSE_INTERVAL = float(
+    os.getenv(
+        "SMART_SAMPLING_COARSE_INTERVAL",
+        "5.0",
+    )
+)
+
+
+SMART_SAMPLING_VISUAL_THRESHOLD = float(
+    os.getenv(
+        "SMART_SAMPLING_VISUAL_THRESHOLD",
+        "18.0",
+    )
+)
+
+
+SMART_SAMPLING_REFINEMENT_WINDOW = float(
+    os.getenv(
+        "SMART_SAMPLING_REFINEMENT_WINDOW",
+        "3.0",
+    )
+)
+
+
+SMART_SAMPLING_REFINEMENT_INTERVAL = float(
+    os.getenv(
+        "SMART_SAMPLING_REFINEMENT_INTERVAL",
+        "1.0",
+    )
+)
+
+
+SMART_SAMPLING_MIN_FRAME_GAP = float(
+    os.getenv(
+        "SMART_SAMPLING_MIN_FRAME_GAP",
+        "1.0",
+    )
+)
+
+
 CORS_ORIGINS = [
     origin.strip()
     for origin in os.getenv(

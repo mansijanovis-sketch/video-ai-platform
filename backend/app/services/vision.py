@@ -1,5 +1,7 @@
 from collections import Counter
 
+import cv2
+
 
 def generate_video_description(
     frames,
@@ -79,53 +81,50 @@ def generate_video_description(
     # --------------------------------------------------
 
     scene_changes = 0
+    previous_image = None
 
-    for i in range(1, len(frames)):
+    for frame in frames:
 
-        previous = frames[i - 1].get(
-            "frame"
-        )
+        filepath = frame.get("filepath")
 
-        current = frames[i].get(
-            "frame"
-        )
-
-        if (
-            previous is None
-            or current is None
-        ):
+        if not filepath:
             continue
 
-        try:
+        current_image = cv2.imread(filepath)
 
-            import cv2
+        if current_image is None:
+            continue
 
-            previous_gray = cv2.cvtColor(
-                previous,
-                cv2.COLOR_BGR2GRAY,
-            )
+        if previous_image is not None:
 
-            current_gray = cv2.cvtColor(
-                current,
-                cv2.COLOR_BGR2GRAY,
-            )
+            try:
 
-            difference = cv2.absdiff(
-                previous_gray,
-                current_gray,
-            )
+                previous_gray = cv2.cvtColor(
+                    previous_image,
+                    cv2.COLOR_BGR2GRAY,
+                )
 
-            change_score = (
-                difference.mean()
-            )
+                current_gray = cv2.cvtColor(
+                    current_image,
+                    cv2.COLOR_BGR2GRAY,
+                )
 
-            if change_score > 15:
+                difference = cv2.absdiff(
+                    previous_gray,
+                    current_gray,
+                )
 
-                scene_changes += 1
+                change_score = difference.mean()
 
-        except Exception:
+                if change_score > 15:
 
-            pass
+                    scene_changes += 1
+
+            except Exception:
+
+                pass
+
+        previous_image = current_image
 
     # --------------------------------------------------
     # Start description
@@ -216,7 +215,6 @@ def generate_video_description(
                 unique_texts
             )
 
-            # Prevent enormous OCR output
             if len(combined_text) > 500:
 
                 combined_text = (

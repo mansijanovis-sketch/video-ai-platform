@@ -1,6 +1,6 @@
 import os
 
-from .video_processor import extract_frames
+from .smart_sampling import smart_sample_video
 from .detector import detect_objects
 from .ocr import extract_text
 from .ocr_cleaner import clean_ocr_text
@@ -26,10 +26,9 @@ def analyze_video(
         str(video_id),
     )
 
-    frames = extract_frames(
-        video_path,
-        output_dir,
-        interval_seconds=1.0,
+    frames = smart_sample_video(
+        video_path=video_path,
+        output_dir=output_dir,
     )
 
     detection_count = 0
