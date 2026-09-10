@@ -6,7 +6,11 @@ from .ocr import extract_text
 from .ocr_cleaner import clean_ocr_text
 from .vision import generate_video_description
 from .timeline import aggregate_detections, build_timeline, detect_scene_changes
-
+from .evidence_storage import save_video_evidence
+from .evidence_classifier import (
+    classify_evidence,
+    get_evidence_confidence,
+)
 from ..models import Detection
 
 
@@ -87,11 +91,25 @@ def analyze_video(
         )
 
         if text:
+            evidence_type = classify_evidence(
+                text
+            )
+
+            evidence_confidence = (
+                get_evidence_confidence(
+                    evidence_type
+                )
+            )
+
+
 
             ocr_results.append(
                 {
                     "timestamp": frame["timestamp"],
                     "text": text,
+                    "evidence_type": evidence_type,
+                    "source": "video_frame",
+                    "confidence": evidence_confidence,
                 }
             )
 
@@ -100,6 +118,12 @@ def analyze_video(
     timeline = build_timeline(object_summary, ocr_results, scene_changes)
 
     db.commit()
+
+    save_video_evidence(
+        db=db,
+        video_id=video_id,
+        evidence=ocr_results,
+    )
 
     # --------------------------------------------------
     # Generate local video description

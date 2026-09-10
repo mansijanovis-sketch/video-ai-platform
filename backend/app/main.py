@@ -12,7 +12,10 @@ from .config import (
 
 from .database import Base, engine
 from . import models
+from .routes.ask import router as ask_router
 from .routes.videos import router as videos_router
+from .routes.transcript import router as transcript_router
+from .routes.youtube import router as youtube_router
 
 
 # Make sure required directories exist
@@ -53,6 +56,13 @@ app.mount(
 # API routes
 app.include_router(
     videos_router
+)
+app.include_router(transcript_router)
+app.include_router(
+    ask_router
+)
+app.include_router(
+    youtube_router
 )
 
 

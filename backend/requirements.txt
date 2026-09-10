@@ -14,3 +14,8 @@ Pillow
 
 pytest
 httpx
+
+youtube-transcript-api
+yt-dlp
+
+requests

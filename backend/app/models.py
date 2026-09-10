@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -31,7 +32,7 @@ class Video(Base):
 
     filepath = Column(
         String,
-        nullable=False,
+        nullable=True,
     )
 
     duration = Column(
@@ -59,10 +60,46 @@ class Video(Base):
         DateTime,
         default=datetime.utcnow,
     )
+
     detections = relationship(
         "Detection",
         back_populates="video",
         cascade="all, delete-orphan",
+    )
+
+    transcript_segments = relationship(
+        "TranscriptSegment",
+        back_populates="video",
+        cascade="all, delete-orphan",
+    )
+
+    tutorial_steps = relationship(
+        "TutorialStep",
+        back_populates="video",
+        cascade="all, delete-orphan",
+    )
+
+    evidence = relationship(
+        "VideoEvidence",
+        back_populates="video",
+        cascade="all, delete-orphan",
+    )
+
+    youtube_url = Column(
+        String,
+        nullable=True,
+    )
+
+    youtube_video_id = Column(
+        String,
+        nullable=True,
+        index=True,
+    )
+
+    source_type = Column(
+        String,
+        nullable=False,
+        default="upload",
     )
 
 
@@ -96,12 +133,187 @@ class Detection(Base):
         nullable=False,
     )
 
-    x1 = Column(Float, nullable=False)
-    y1 = Column(Float, nullable=False)
-    x2 = Column(Float, nullable=False)
-    y2 = Column(Float, nullable=False)
+    x1 = Column(
+        Float,
+        nullable=False,
+    )
+
+    y1 = Column(
+        Float,
+        nullable=False,
+    )
+
+    x2 = Column(
+        Float,
+        nullable=False,
+    )
+
+    y2 = Column(
+        Float,
+        nullable=False,
+    )
 
     video = relationship(
         "Video",
         back_populates="detections",
+    )
+
+
+class TranscriptSegment(Base):
+    __tablename__ = "transcript_segments"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    video_id = Column(
+        Integer,
+        ForeignKey("videos.id"),
+        nullable=False,
+    )
+
+    start_time = Column(
+        Float,
+        nullable=False,
+    )
+
+    end_time = Column(
+        Float,
+        nullable=False,
+    )
+
+    text = Column(
+        Text,
+        nullable=False,
+    )
+
+    video = relationship(
+        "Video",
+        back_populates="transcript_segments",
+    )
+
+class TutorialStep(Base):
+    __tablename__ = "tutorial_steps"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    video_id = Column(
+        Integer,
+        ForeignKey("videos.id"),
+        nullable=False,
+    )
+
+    step_number = Column(
+        Integer,
+        nullable=False,
+    )
+
+    action = Column(
+        String,
+        nullable=False,
+    )
+
+    confidence = Column(
+        Float,
+        nullable=False,
+        default=0.0,
+    )
+
+    verified = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+
+    name = Column(
+        String,
+        nullable=True,
+    )
+
+    path = Column(
+        String,
+        nullable=True,
+    )
+
+    instruction = Column(
+        Text,
+        nullable=False,
+    )
+
+    start_time = Column(
+        Float,
+        nullable=False,
+    )
+
+    end_time = Column(
+        Float,
+        nullable=False,
+    )
+
+    evidence_source = Column(
+        String,
+        nullable=False,
+    )
+
+    evidence_text = Column(
+        Text,
+        nullable=False,
+    )
+
+    video = relationship(
+        "Video",
+        back_populates="tutorial_steps",
+    )
+
+
+class VideoEvidence(Base):
+    __tablename__ = "video_evidence"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    video_id = Column(
+        Integer,
+        ForeignKey("videos.id"),
+        nullable=False,
+    )
+
+    timestamp = Column(
+        Float,
+        nullable=False,
+    )
+
+    evidence_type = Column(
+        String,
+        nullable=False,
+    )
+
+    text = Column(
+        Text,
+        nullable=False,
+    )
+
+    source = Column(
+        String,
+        nullable=False,
+    )
+
+    confidence = Column(
+        Float,
+        nullable=False,
+        default=0.0,
+    )
+
+    video = relationship(
+        "Video",
+        back_populates="evidence",
     )

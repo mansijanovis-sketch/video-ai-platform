@@ -1,8 +1,14 @@
+import traceback
+
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal
 from ..models import Video, Detection
 from .analyzer import analyze_video
+from .transcription import transcribe_video
+from .transcript_storage import save_transcript
+from .step_extractor import extract_steps
+from .tutorial_step_storage import save_tutorial_steps
 
 
 def run_analysis_job(video_id: int):
@@ -16,10 +22,21 @@ def run_analysis_job(video_id: int):
         )
 
         if not video:
+            print(
+                f"Video {video_id} not found."
+            )
             return
+
+        print(
+            f"Starting analysis for video {video_id}..."
+        )
 
         video.status = "processing"
         db.commit()
+
+        # -------------------------------------------------
+        # STEP 1: Clear previous detections
+        # -------------------------------------------------
 
         db.query(Detection).filter(
             Detection.video_id == video.id
@@ -29,6 +46,14 @@ def run_analysis_job(video_id: int):
 
         db.commit()
 
+        # -------------------------------------------------
+        # STEP 2: Analyze video
+        # -------------------------------------------------
+
+        print(
+            f"Running visual analysis for video {video_id}..."
+        )
+
         result = analyze_video(
             video_path=video.filepath,
             video_id=video.id,
@@ -36,12 +61,103 @@ def run_analysis_job(video_id: int):
             video_duration=video.duration or 0,
         )
 
-        video.description = result["description"]
-        video.status = "completed"
+        video.description = result[
+            "description"
+        ]
 
         db.commit()
 
-    except Exception:
+        print(
+            f"Visual analysis completed for video {video_id}."
+        )
+
+        # -------------------------------------------------
+        # STEP 3: Transcribe video
+        # -------------------------------------------------
+
+        print(
+            f"Starting transcription for video {video_id}..."
+        )
+
+        transcript = transcribe_video(
+            video.filepath
+        )
+
+        transcript_segments = transcript[
+            "segments"
+        ]
+
+        print(
+            f"Transcription completed. "
+            f"Segments: {len(transcript_segments)}"
+        )
+
+        # -------------------------------------------------
+        # STEP 4: Save transcript
+        # -------------------------------------------------
+
+        save_transcript(
+            db=db,
+            video_id=video.id,
+            segments=transcript_segments,
+        )
+
+        print(
+            f"Transcript saved for video {video_id}."
+        )
+
+        # -------------------------------------------------
+        # STEP 5: Extract tutorial steps
+        # -------------------------------------------------
+
+        print(
+            f"Extracting tutorial steps "
+            f"for video {video_id}..."
+        )
+
+        tutorial_steps = extract_steps(
+            transcript_segments
+        )
+
+        print(
+            f"Tutorial steps extracted: "
+            f"{len(tutorial_steps)}"
+        )
+
+        # -------------------------------------------------
+        # STEP 6: Save tutorial steps
+        # -------------------------------------------------
+
+        save_tutorial_steps(
+            db=db,
+            video_id=video.id,
+            steps=tutorial_steps,
+        )
+
+        print(
+            f"Tutorial steps saved for video {video_id}."
+        )
+
+        # -------------------------------------------------
+        # STEP 7: Mark analysis completed
+        # -------------------------------------------------
+
+        video.status = "completed"
+        db.commit()
+
+        print(
+            f"Analysis completed successfully "
+            f"for video {video_id}."
+        )
+
+    except Exception as error:
+        print(
+            f"Analysis failed for video {video_id}: "
+            f"{error}"
+        )
+
+        traceback.print_exc()
+
         db.rollback()
 
         video = (

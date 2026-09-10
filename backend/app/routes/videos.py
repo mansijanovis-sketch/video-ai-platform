@@ -21,6 +21,7 @@ from ..models import Video, Detection
 from ..services.video_processor import get_video_info
 from ..services.analyzer import analyze_video
 from ..services.analysis_job import run_analysis_job
+from ..services.video_url import acquire_video_from_url
 
 
 router = APIRouter(
@@ -105,6 +106,7 @@ def upload_video(
         duration=info["duration"],
         fps=info["fps"],
         status="uploaded",
+        source_type="upload",
     )
 
     db.add(video)
@@ -160,6 +162,115 @@ def analyze_uploaded_video(
         "video_id": video.id,
         "status": "processing",
         "message": "Video analysis started.",
+    }
+
+# ==================================================
+# Add Video From URL
+# ==================================================
+
+@router.post("/url")
+def add_video_from_url(
+    url: str,
+    db: Session = Depends(get_db),
+):
+    url = url.strip()
+
+    if not url:
+        raise HTTPException(
+            status_code=400,
+            detail="A video URL is required.",
+        )
+
+    if not (
+        url.startswith("http://")
+        or url.startswith("https://")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Only HTTP and HTTPS URLs are supported.",
+        )
+
+    try:
+        result = acquire_video_from_url(
+            url
+        )
+
+        filepath = result["filepath"]
+
+        if not os.path.exists(filepath):
+            raise ValueError(
+                "Video acquisition completed, "
+                "but the video file was not found."
+            )
+
+        info = get_video_info(
+            filepath
+        )
+
+    except Exception as e:
+
+        if "filepath" in locals():
+            if filepath and os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                except OSError:
+                    pass
+
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unable to acquire video from URL: {str(e)}",
+        )
+
+    source_type = result.get(
+        "source_type",
+        "url",
+    )
+
+    video = Video(
+        filename=(
+            result.get("title")
+            or Path(filepath).name
+        ),
+        filepath=filepath,
+        duration=(
+            info.get("duration")
+            or result.get("duration")
+            or 0
+        ),
+        fps=(
+            info.get("fps")
+            or result.get("fps")
+            or 0
+        ),
+        status="uploaded",
+        source_type=source_type,
+        youtube_url=(
+            url
+            if source_type == "youtube"
+            else None
+        ),
+        youtube_video_id=(
+            result.get("external_id")
+            if source_type == "youtube"
+            else None
+        ),
+    )
+
+    db.add(video)
+    db.commit()
+    db.refresh(video)
+
+    return {
+        "id": video.id,
+        "filename": video.filename,
+        "filepath": video.filepath,
+        "duration": video.duration,
+        "fps": video.fps,
+        "status": video.status,
+        "source_type": video.source_type,
+        "youtube_url": video.youtube_url,
+        "youtube_video_id": video.youtube_video_id,
+        "message": "Video added successfully.",
     }
 
 # ==================================================
@@ -229,5 +340,8 @@ def get_video(
         "fps": video.fps,
         "status": video.status,
         "description": video.description,
+        "source_type": video.source_type,
+        "youtube_url": video.youtube_url,
+        "youtube_video_id": video.youtube_video_id,
         "created_at": video.created_at,
     }

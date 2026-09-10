@@ -5,12 +5,16 @@
 html {
   margin: 0;
   padding: 0;
+
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
+
   min-width: 320px;
   min-height: 100vh;
+
   font-family:
     Inter,
     ui-sans-serif,
@@ -19,10 +23,20 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: #f6f7f9;
+
+  background: #ffffff;
+  color: #111111;
+
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 button,
 input {
   font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
 }
