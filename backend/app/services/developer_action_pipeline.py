@@ -19,7 +19,7 @@ def build_developer_action_timeline(
         return []
 
     command_actions = reconstruct_react_setup(
-        segments
+        segments=segments
     )
 
     file_actions = extract_file_edit_actions(
