@@ -13,6 +13,7 @@ backend/venv/
 # Video files
 backend/uploads/*
 backend/frames/*
+yolo11n.pt
 
 # Node
 frontend/node_modules/
