@@ -6,6 +6,8 @@ from .ocr import extract_text
 from .ocr_cleaner import clean_ocr_text
 from .vision import generate_video_description
 from .timeline import aggregate_detections, build_timeline, detect_scene_changes
+from .developer_action_pipeline import build_developer_action_timeline
+from .evidence_fusion import fuse_evidence
 from .evidence_storage import save_video_evidence
 from .evidence_classifier import (
     classify_evidence,
@@ -19,7 +21,11 @@ def analyze_video(
     video_id: int,
     db,
     video_duration: float,
+    transcript_segments: list[dict] | None = None,
 ):
+
+    if transcript_segments is None:
+        transcript_segments = []
 
     output_dir = os.path.join(
         "frames",
@@ -116,6 +122,33 @@ def analyze_video(
     scene_changes = detect_scene_changes(frames)
     timeline = build_timeline(object_summary, ocr_results, scene_changes)
 
+    visual_events = []
+    if all_detections:
+        visual_events = [
+            {
+                "timestamp": detection["timestamp"],
+                "label": detection["label"],
+            }
+            for detection in all_detections
+            if isinstance(detection, dict)
+            and "timestamp" in detection
+            and "label" in detection
+        ]
+
+    developer_actions = build_developer_action_timeline(
+        segments=transcript_segments,
+    )
+    if developer_actions is None:
+        developer_actions = []
+
+    fused_evidence = fuse_evidence(
+        transcript_segments=transcript_segments,
+        ocr_results=ocr_results,
+        developer_actions=developer_actions,
+        visual_events=visual_events,
+        time_window_seconds=3.0,
+    )
+
     db.commit()
 
     save_video_evidence(
@@ -143,4 +176,6 @@ def analyze_video(
         "object_summary": object_summary,
         "scene_changes": scene_changes,
         "timeline": timeline,
+        "developer_actions": developer_actions,
+        "fused_evidence": fused_evidence,
     }

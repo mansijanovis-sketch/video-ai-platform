@@ -47,32 +47,7 @@ def run_analysis_job(video_id: int):
         db.commit()
 
         # -------------------------------------------------
-        # STEP 2: Analyze video
-        # -------------------------------------------------
-
-        print(
-            f"Running visual analysis for video {video_id}..."
-        )
-
-        result = analyze_video(
-            video_path=video.filepath,
-            video_id=video.id,
-            db=db,
-            video_duration=video.duration or 0,
-        )
-
-        video.description = result[
-            "description"
-        ]
-
-        db.commit()
-
-        print(
-            f"Visual analysis completed for video {video_id}."
-        )
-
-        # -------------------------------------------------
-        # STEP 3: Transcribe video
+        # STEP 2: Transcribe video
         # -------------------------------------------------
 
         print(
@@ -90,6 +65,32 @@ def run_analysis_job(video_id: int):
         print(
             f"Transcription completed. "
             f"Segments: {len(transcript_segments)}"
+        )
+
+        # -------------------------------------------------
+        # STEP 3: Analyze video
+        # -------------------------------------------------
+
+        print(
+            f"Running visual analysis for video {video_id}..."
+        )
+
+        result = analyze_video(
+            video_path=video.filepath,
+            video_id=video.id,
+            db=db,
+            video_duration=video.duration or 0,
+            transcript_segments=transcript_segments,
+        )
+
+        video.description = result[
+            "description"
+        ]
+
+        db.commit()
+
+        print(
+            f"Visual analysis completed for video {video_id}."
         )
 
         # -------------------------------------------------
