@@ -433,6 +433,7 @@ function LandingPage() {
             <a href="#solution">Solution</a>
             <a href="#features">Features</a>
             <a href="#how-it-works">How it works</a>
+            <Link to="/privacy-policy">Privacy Policy</Link>
             <button type="button" onClick={() => setIsModalOpen(true)}>
               Join Early Access
             </button>
