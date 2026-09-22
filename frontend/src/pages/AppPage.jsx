@@ -1,436 +1,241 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import './AppPage.css'
+import { createYouTubeVideo, getTranscript, getTutorialSteps, getVideoEvidence } from '../services/api'
+
+const youtubeUrlPattern = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=[\w-]{11}(?:[&#].*)?|youtu\.be\/[\w-]{11}(?:\?.*)?|youtube\.com\/shorts\/[\w-]{11}(?:\?.*)?)$/i
+
+const stages = [
+  ['received', 'Receiving tutorial'],
+  ['transcript', 'Fetching transcript'],
+  ['actions', 'Extracting implementation steps'],
+  ['guide', 'Building guide'],
+]
+
+function formatTime(seconds) {
+  const value = Number(seconds)
+  if (!Number.isFinite(value)) return '--:--'
+
+  const totalSeconds = Math.max(0, Math.floor(value))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const remainder = totalSeconds % 60
+  const parts = [hours, minutes, remainder]
+
+  if (hours > 0) {
+    return parts.map((part) => String(part).padStart(2, '0')).join(':')
+  }
+
+  return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+}
+
+function formatTimestamp(step) {
+  const start = formatTime(step.start_time)
+  if (step.end_time === undefined || step.end_time === null) return start
+  return `${start}-${formatTime(step.end_time)}`
+}
+
+function actionLabel(action) {
+  const labels = {
+    run_command: 'Command',
+    create_file: 'Create file',
+    edit_file: 'Edit file',
+  }
+
+  return labels[action] || 'Implementation step'
+}
+
+function stepValue(step) {
+  return step.value || step.path || step.name || ''
+}
+
+function instructionFor(step) {
+  const value = stepValue(step)
+  const action = step.action
+
+  if (action === 'create_file' && value) {
+    return `Create a new file named ${value}.`
+  }
+
+  if (action === 'edit_file' && value) {
+    const operation = step.operation ? step.operation.toLowerCase() : 'edit'
+    return `${operation === 'replace' ? 'Replace' : 'Edit'} the existing ${value} component with the implementation shown in the tutorial.`
+  }
+
+  if (action === 'run_command') {
+    const command = value.toLowerCase()
+    if (command.startsWith('npx create-react-app')) return 'Create the React application.'
+    if (command.startsWith('cd ')) return 'Move into the React project directory.'
+    if (command === 'yarn start') return 'Start the development server.'
+    if (command.includes('react-router-dom')) return 'Install React Router.'
+    return 'Run the command shown in the tutorial.'
+  }
+
+  return step.instruction || 'Follow the implementation step shown in the tutorial.'
+}
 
 function AppPage() {
-  const fileInputRef = useRef(null)
-
-  const [sourceType, setSourceType] = useState('upload')
-  const [videoFile, setVideoFile] = useState(null)
-  const [videoUrl, setVideoUrl] = useState('')
-  const [analysisType, setAnalysisType] = useState('general')
+  const [url, setUrl] = useState('')
+  const [state, setState] = useState('idle')
+  const [stage, setStage] = useState('received')
   const [error, setError] = useState('')
+  const [result, setResult] = useState(null)
+  const [copiedStep, setCopiedStep] = useState(null)
 
-  const handleFileChange = (event) => {
-    const file = event.target.files?.[0]
-
-    if (!file) {
-      return
-    }
-
-    setError('')
-    setVideoFile(file)
-  }
-
-  const handleDrop = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
+    const trimmedUrl = url.trim()
 
-    const file = event.dataTransfer.files?.[0]
-
-    if (!file) {
+    if (!trimmedUrl) {
+      setError('Paste a YouTube tutorial URL to continue.')
+      setState('error')
       return
     }
 
-    if (!file.type.startsWith('video/')) {
-      setError('Please select a valid video file.')
+    if (!youtubeUrlPattern.test(trimmedUrl)) {
+      setError('Enter a valid YouTube watch, Shorts, or youtu.be URL.')
+      setState('error')
       return
     }
 
     setError('')
-    setVideoFile(file)
-  }
+    setState('submitting')
+    setStage('received')
 
-  const handleBrowse = () => {
-    fileInputRef.current?.click()
-  }
+    try {
+      const video = await createYouTubeVideo(trimmedUrl)
+      if (!video?.id) throw new Error('The backend returned an invalid tutorial record.')
 
-  const handleSubmit = (event) => {
-    event.preventDefault()
+      setState('processing')
+      setStage('transcript')
+      const transcript = await getTranscript(video.id)
+      if (!Array.isArray(transcript?.segments) || transcript.segments.length === 0) {
+        throw new Error('No transcript is available for this tutorial.')
+      }
 
-    setError('')
+      setStage('actions')
+      const stepsResponse = await getTutorialSteps(video.id)
+      if (!stepsResponse || !Array.isArray(stepsResponse.steps)) {
+        throw new Error('The backend returned an invalid implementation guide.')
+      }
 
-    if (sourceType === 'upload' && !videoFile) {
-      setError('Please upload a video file.')
-      return
+      const steps = stepsResponse.steps
+      let evidence = []
+      try {
+        const evidenceResponse = await getVideoEvidence(video.id)
+        evidence = Array.isArray(evidenceResponse?.evidence) ? evidenceResponse.evidence : []
+      } catch {
+        // Step-level transcript evidence remains available when the collection is unavailable.
+      }
+
+      setStage('guide')
+      setResult({ video, steps, evidence, url: trimmedUrl })
+      setState('completed')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Tutorial analysis failed. Please try again.')
+      setState('error')
     }
-
-    if (sourceType === 'url' && !videoUrl.trim()) {
-      setError('Please enter a video URL.')
-      return
-    }
-
-    console.log({
-      sourceType,
-      videoFile,
-      videoUrl,
-      analysisType,
-    })
   }
 
-  const analysisOptions = [
-    {
-      id: 'general',
-      title: 'General Analysis',
-      description: 'Understand the video and its important content.',
-    },
-    {
-      id: 'summary',
-      title: 'Summary',
-      description: 'Get a concise summary of the video.',
-    },
-    {
-      id: 'transcript',
-      title: 'Transcript',
-      description: 'Extract and organize spoken content.',
-    },
-    {
-      id: 'moments',
-      title: 'Key Moments',
-      description: 'Find important events and timestamps.',
-    },
-    {
-      id: 'developer',
-      title: 'Developer Guide',
-      description: 'Turn coding tutorials into implementation steps.',
-    },
-    {
-      id: 'custom',
-      title: 'Custom Analysis',
-      description: 'Define what you want VideoMind to find.',
-    },
-  ]
+  const copyCommand = async (step, stepKey) => {
+    const command = stepValue(step)
+    if (!command || !navigator.clipboard) return
+
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopiedStep(stepKey)
+      window.setTimeout(() => setCopiedStep(null), 1600)
+    } catch {
+      setError('The command could not be copied. Please select it manually.')
+    }
+  }
+
+  const renderStep = (step, index) => {
+    const value = stepValue(step)
+    const stepKey = step.id || `${step.step}-${step.start_time}-${index}`
+    const evidenceText = step.evidence?.text?.trim()
+    const isCommand = step.action === 'run_command'
+    const isFileAction = step.action === 'create_file' || step.action === 'edit_file'
+
+    return (
+      <article className="step-card" key={stepKey}>
+        <div className="step-number">{String(index + 1).padStart(2, '0')}</div>
+        <div className="step-content">
+          <div className="step-meta">
+            <span>{actionLabel(step.action)}</span>
+            {step.confidence ? <span>{Math.round(Number(step.confidence) * 100)}% confidence</span> : null}
+          </div>
+          <h3>{instructionFor(step)}</h3>
+
+          {isCommand && value && (
+            <div className="step-detail command-detail">
+              <span className="detail-label">Command</span>
+              <div className="command-row">
+                <code>{value}</code>
+                <button type="button" onClick={() => copyCommand(step, stepKey)}>
+                  {copiedStep === stepKey ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {isFileAction && value && (
+            <div className="step-detail file-detail">
+              <span className="detail-label">File</span>
+              <code>{value}</code>
+              {step.operation && <span className="operation-label">Operation: {String(step.operation).replace(/^./, (letter) => letter.toUpperCase())}</span>}
+            </div>
+          )}
+
+          <p className="timestamp">Timestamp: {formatTimestamp(step)}</p>
+
+          {evidenceText && (
+            <details className="evidence-detail">
+              <summary>Evidence</summary>
+              <div className="evidence-content">
+                <span className="detail-label">Transcript evidence</span>
+                <blockquote>{evidenceText}</blockquote>
+              </div>
+            </details>
+          )}
+        </div>
+      </article>
+    )
+  }
 
   return (
-    <div className="app">
-      <header className="navbar">
-        <div className="navbar-inner">
-          <a href="/" className="brand">
-            <span className="brand-mark">V</span>
-            <span className="brand-name">VideoMind</span>
-          </a>
-
-          <nav className="nav-links" aria-label="Primary navigation">
-            <a href="/#how-it-works">How it works</a>
-            <a href="/#capabilities">Capabilities</a>
-          </nav>
-
-          <a href="/#analyze" className="nav-button">
-            Analyze Video
-          </a>
-        </div>
+    <div className="app-page">
+      <header className="app-header">
+        <a href="/" className="app-brand"><span>V</span>VideoMind</a>
+        <a href="/" className="app-back-link">Back to home</a>
       </header>
 
-      <main>
-        <section className="hero-section">
-          <div className="hero-content">
-            <div className="hero-badge">
-              <span className="badge-dot"></span>
-              Video understanding platform
-            </div>
-
-            <h1>
-              Understand any video.
-              <br />
-              <span>Get what matters.</span>
-            </h1>
-
-            <p className="hero-description">
-              Upload a video or paste a public video URL. VideoMind analyzes the content and turns it into useful,
-              structured information.
-            </p>
-
-            <div className="hero-tags">
-              <span>Local videos</span>
-              <span>YouTube</span>
-              <span>Video URLs</span>
-              <span>More sources</span>
-            </div>
-          </div>
-
-          <div className="hero-visual">
-            <div className="visual-window">
-              <div className="window-header">
-                <div className="window-dots">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-
-                <div className="window-title">VideoMind Analysis</div>
-              </div>
-
-              <div className="visual-content">
-                <div className="visual-label">VIDEO UNDERSTANDING</div>
-
-                <h3>Analyze what happens inside a video.</h3>
-
-                <div className="visual-row">
-                  <div className="visual-icon">01</div>
-
-                  <div>
-                    <strong>Transcript</strong>
-                    <p>Speech converted into timestamped text.</p>
-                  </div>
-                </div>
-
-                <div className="visual-row">
-                  <div className="visual-icon">02</div>
-
-                  <div>
-                    <strong>Visual Evidence</strong>
-                    <p>Frames, scenes, OCR and detected events.</p>
-                  </div>
-                </div>
-
-                <div className="visual-row">
-                  <div className="visual-icon">03</div>
-
-                  <div>
-                    <strong>Structured Output</strong>
-                    <p>Turn raw video evidence into useful results.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+      <main className="app-main">
+        <section className="app-intro">
+          <p className="app-kicker">Developer tutorial intelligence</p>
+          <h1>Turn coding tutorials into buildable steps.</h1>
+          <p>Paste a YouTube coding tutorial and VideoMind will extract the implementation steps, commands, files, and supporting evidence.</p>
         </section>
 
-        <section className="analyzer-section" id="analyze">
-          <div className="section-heading">
-            <p className="section-eyebrow">START ANALYZING</p>
-
-            <h2>Give VideoMind a video.</h2>
-
-            <p>
-              Upload a local video or provide a public video URL, then choose what you want to understand.
-            </p>
+        <section className="analyzer-panel" aria-labelledby="analyzer-title">
+          <div className="panel-heading">
+            <div><p className="app-kicker">Start an analysis</p><h2 id="analyzer-title">Analyze a YouTube tutorial</h2></div>
+            <span className="panel-status">{state === 'completed' ? 'Complete' : 'MVP'}</span>
           </div>
-
-          <div className="analyzer-card">
-            <div className="source-tabs">
-              <button
-                type="button"
-                className={sourceType === 'upload' ? 'source-tab active' : 'source-tab'}
-                onClick={() => {
-                  setSourceType('upload')
-                  setError('')
-                }}
-              >
-                <span className="tab-icon">↑</span>
-                Upload Video
-              </button>
-
-              <button
-                type="button"
-                className={sourceType === 'url' ? 'source-tab active' : 'source-tab'}
-                onClick={() => {
-                  setSourceType('url')
-                  setError('')
-                }}
-              >
-                <span className="tab-icon">↗</span>
-                Video URL
-              </button>
+          <form onSubmit={handleSubmit}>
+            <label htmlFor="youtube-url">YouTube URL</label>
+            <div className="url-submit-row">
+              <input id="youtube-url" type="url" value={url} onChange={(event) => { setUrl(event.target.value); if (state === 'error') setState('idle') }} placeholder="Paste YouTube tutorial URL" disabled={state === 'submitting' || state === 'processing'} />
+              <button type="submit" disabled={state === 'submitting' || state === 'processing'}>{state === 'submitting' || state === 'processing' ? 'Analyzing...' : 'Analyze Tutorial'} <span aria-hidden="true">→</span></button>
             </div>
-
-            <div className="source-input">
-              {sourceType === 'upload' ? (
-                <>
-                  <input ref={fileInputRef} type="file" accept="video/*" onChange={handleFileChange} hidden />
-
-                  <div className="upload-zone" onDragOver={(event) => event.preventDefault()} onDrop={handleDrop} onClick={handleBrowse}>
-                    <div className="upload-icon">↑</div>
-
-                    {videoFile ? (
-                      <>
-                        <h3>{videoFile.name}</h3>
-
-                        <p>{(videoFile.size / (1024 * 1024)).toFixed(2)} MB</p>
-
-                        <button
-                          type="button"
-                          className="change-file-button"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            handleBrowse()
-                          }}
-                        >
-                          Choose another video
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <h3>Drop your video here</h3>
-
-                        <p>or click to browse files</p>
-
-                        <span className="supported-formats">MP4 · MOV · WebM · MKV · AVI</span>
-                      </>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="url-zone">
-                  <div className="url-input-header">
-                    <span className="url-large-icon">↗</span>
-
-                    <div>
-                      <h3>Paste a video URL</h3>
-
-                      <p>Use a public video URL from a supported source.</p>
-                    </div>
-                  </div>
-
-                  <input
-                    type="url"
-                    value={videoUrl}
-                    onChange={(event) => {
-                      setVideoUrl(event.target.value)
-                      setError('')
-                    }}
-                    placeholder="https://..."
-                    className="video-url-input"
-                  />
-
-                  <p className="url-help">
-                    YouTube, direct video URLs and other supported video sources can be handled by the ingestion layer.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="analysis-selector">
-              <div className="analysis-selector-header">
-                <div>
-                  <p className="selector-label">ANALYSIS TYPE</p>
-
-                  <h3>What do you want from this video?</h3>
-                </div>
-              </div>
-
-              <div className="analysis-grid">
-                {analysisOptions.map((option) => (
-                  <button
-                    type="button"
-                    key={option.id}
-                    className={analysisType === option.id ? 'analysis-option active' : 'analysis-option'}
-                    onClick={() => setAnalysisType(option.id)}
-                  >
-                    <span className="option-check">{analysisType === option.id ? '✓' : ''}</span>
-
-                    <span className="option-content">
-                      <strong>{option.title}</strong>
-
-                      <small>{option.description}</small>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {error && <div className="form-error">{error}</div>}
-
-            <button type="button" className="main-analyze-button" onClick={handleSubmit}>
-              Analyze Video
-              <span>→</span>
-            </button>
-
-            <p className="privacy-note">Video processing will run through your VideoMind analysis pipeline.</p>
-          </div>
+            <p className="example-url">Example: https://www.youtube.com/watch?v=...</p>
+          </form>
+          {error && <div className="error-message" role="alert">{error}</div>}
         </section>
 
-        <section className="capabilities-section" id="capabilities">
-          <div className="section-heading">
-            <p className="section-eyebrow">ONE PLATFORM</p>
+        {(state === 'submitting' || state === 'processing') && <section className="progress-panel" aria-live="polite"><h2>Analyzing tutorial</h2><div className="progress-list">{stages.map(([id, label]) => { const currentIndex = stages.findIndex(([stageId]) => stageId === stage); const itemIndex = stages.findIndex(([stageId]) => stageId === id); const icon = itemIndex < currentIndex ? '✓' : itemIndex === currentIndex ? '●' : '○'; return <div className={`progress-item ${itemIndex <= currentIndex ? 'active' : ''}`} key={id}><span>{icon}</span>{itemIndex + 1}. {label}</div> })}</div></section>}
 
-            <h2>
-              Different videos.
-              <br />
-              Different answers.
-            </h2>
-
-            <p>
-              VideoMind provides a common video understanding layer and specialized analysis for different use cases.
-            </p>
-          </div>
-
-          <div className="capability-grid">
-            <div className="capability-card">
-              <span className="capability-number">01</span>
-
-              <h3>General Video Analysis</h3>
-
-              <p>Understand the overall content, scenes, events and important moments.</p>
-            </div>
-
-            <div className="capability-card">
-              <span className="capability-number">02</span>
-
-              <h3>Learning &amp; Education</h3>
-
-              <p>Turn lectures and educational videos into structured notes and useful references.</p>
-            </div>
-
-            <div className="capability-card">
-              <span className="capability-number">03</span>
-
-              <h3>Developer Analysis</h3>
-
-              <p>Extract commands, files, code changes and implementation steps from coding tutorials.</p>
-            </div>
-
-            <div className="capability-card">
-              <span className="capability-number">04</span>
-
-              <h3>Custom Analysis</h3>
-
-              <p>Analyze a video according to the information the user wants to extract.</p>
-            </div>
-          </div>
-        </section>
-
-        <section className="how-section" id="how-it-works">
-          <div className="section-heading">
-            <p className="section-eyebrow">HOW IT WORKS</p>
-
-            <h2>From raw video to structured intelligence.</h2>
-
-            <p>VideoMind processes different types of video sources through a common evidence pipeline.</p>
-          </div>
-
-          <div className="process-grid">
-            <div className="process-card">
-              <span>01</span>
-              <h3>Add a video</h3>
-              <p>Upload a local video or provide a public video URL.</p>
-            </div>
-
-            <div className="process-card">
-              <span>02</span>
-              <h3>Extract evidence</h3>
-              <p>VideoMind processes speech, frames, visual information and other available evidence.</p>
-            </div>
-
-            <div className="process-card">
-              <span>03</span>
-              <h3>Understand the content</h3>
-              <p>The system combines evidence across the video to identify meaningful information.</p>
-            </div>
-
-            <div className="process-card">
-              <span>04</span>
-              <h3>Get useful results</h3>
-              <p>Explore summaries, transcripts, key moments, visual insights and specialized analysis.</p>
-            </div>
-          </div>
-        </section>
+        {result && state === 'completed' && <section className="guide-section"><div className="guide-header"><div><p className="app-kicker">Implementation Guide</p><h2>{result.video.title || result.video.filename || 'YouTube tutorial'}</h2><a href={result.url} target="_blank" rel="noreferrer">{result.url}</a></div><span>{result.steps.length} {result.steps.length === 1 ? 'step' : 'steps'}</span></div>{result.steps.length > 0 ? <div className="steps-list">{result.steps.map(renderStep)}</div> : <div className="empty-guide"><h3>No implementation steps were detected yet.</h3><p>The transcript was processed, but VideoMind could not identify reliable developer actions.</p></div>}</section>}
       </main>
-
-      <footer className="footer">
-        <div className="footer-inner">
-          <p>© 2026 VideoMind</p>
-          <p>Built with curiosity and a lot of video processing.</p>
-        </div>
-      </footer>
     </div>
   )
 }
