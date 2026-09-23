@@ -56,7 +56,7 @@ def reconstruct_react_setup(
 
     create_result = find_phrase_across_segments(
         ordered,
-        "create react app",
+        "npx create react app",
     )
 
     if create_result:

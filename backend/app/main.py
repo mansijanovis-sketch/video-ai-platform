@@ -13,6 +13,7 @@ from .config import (
 from .database import Base, engine
 from . import models
 from .routes.ask import router as ask_router
+from .routes.early_access import router as early_access_router
 from .routes.videos import router as videos_router
 from .routes.transcript import router as transcript_router
 from .routes.youtube import router as youtube_router
@@ -63,6 +64,9 @@ app.include_router(
 )
 app.include_router(
     youtube_router
+)
+app.include_router(
+    early_access_router
 )
 
 

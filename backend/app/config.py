@@ -86,7 +86,7 @@ CORS_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:5173",
+            "http://localhost:5173,https://videomind.in",
     ).split(",")
     if origin.strip()
 ]

@@ -5,6 +5,7 @@ python-multipart
 sqlalchemy
 psycopg2-binary
 python-dotenv
+email-validator
 
 opencv-python
 ultralytics
