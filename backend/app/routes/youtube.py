@@ -9,6 +9,9 @@ from ..services.youtube import (
     extract_youtube_video_id,
 )
 from ..services.youtube_transcript import (
+    TranscriptAccessBlockedError,
+    TranscriptUnavailableError,
+    YouTubeTranscriptError,
     fetch_youtube_transcript,
 )
 from ..services.youtube_transcript_cleaner import (
@@ -31,6 +34,28 @@ router = APIRouter(
 )
 
 logger = logging.getLogger(__name__)
+
+
+def transcript_http_error(error: YouTubeTranscriptError):
+    if isinstance(error, TranscriptUnavailableError):
+        return HTTPException(
+            status_code=422,
+            detail="No transcript is available for this YouTube video.",
+        )
+
+    if isinstance(error, TranscriptAccessBlockedError):
+        return HTTPException(
+            status_code=503,
+            detail=(
+                "YouTube transcript access is temporarily unavailable "
+                "from the production server."
+            ),
+        )
+
+    return HTTPException(
+        status_code=503,
+        detail="The YouTube transcript provider is temporarily unavailable.",
+    )
 
 
 def populate_youtube_analysis(
@@ -99,7 +124,7 @@ def create_youtube_video(
                     db,
                     existing_video,
                 )
-            except Exception:
+            except Exception as error:
                 logger.exception(
                     "YouTube analysis failed for video %s",
                     existing_video.id,
@@ -111,10 +136,12 @@ def create_youtube_video(
                 if existing_video:
                     existing_video.status = "failed"
                     db.commit()
+                if isinstance(error, YouTubeTranscriptError):
+                    raise transcript_http_error(error) from error
                 raise HTTPException(
                     status_code=422,
                     detail="Unable to analyze this YouTube tutorial.",
-                )
+                ) from error
 
         return {
             "id": existing_video.id,
@@ -153,7 +180,7 @@ def create_youtube_video(
         video.status = "processing"
         db.commit()
         populate_youtube_analysis(db, video)
-    except Exception:
+    except Exception as error:
         logger.exception(
             "YouTube analysis failed for video %s",
             video.id,
@@ -165,10 +192,12 @@ def create_youtube_video(
         if video:
             video.status = "failed"
             db.commit()
+        if isinstance(error, YouTubeTranscriptError):
+            raise transcript_http_error(error) from error
         raise HTTPException(
             status_code=422,
             detail="Unable to analyze this YouTube tutorial.",
-        )
+        ) from error
 
     return {
         "id": video.id,

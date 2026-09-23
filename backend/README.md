@@ -73,10 +73,15 @@ provide a PostgreSQL connection string and may override the other settings:
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/video_ai
 CORS_ORIGINS=https://videomind.in,http://localhost:5173
 PORT=8000
+SUPADATA_API_KEY=your-server-side-provider-key
 ```
 
-Optional settings include `UPLOAD_DIR`, `FRAMES_DIR`, `TESSERACT_PATH`,
-`YOLO_MODEL_PATH`, and the existing smart-sampling settings. `TESSERACT_PATH`
+`SUPADATA_API_KEY` configures the server-side YouTube transcript provider. It
+does not contain YouTube account credentials or cookies. When it is absent,
+local development falls back to `youtube-transcript-api`; production should
+configure the provider key because cloud-provider IPs may be blocked by
+YouTube. Optional settings include `SUPADATA_TIMEOUT_SECONDS`, `UPLOAD_DIR`,
+`FRAMES_DIR`, `TESSERACT_PATH`, `YOLO_MODEL_PATH`, and the existing smart-sampling settings. `TESSERACT_PATH`
 should be omitted when the `tesseract` executable is on the Linux `PATH`.
 
 Install the backend dependencies with:

@@ -20,6 +20,19 @@ TESSERACT_PATH = os.getenv(
 )
 
 
+SUPADATA_API_KEY = os.getenv(
+    "SUPADATA_API_KEY",
+)
+
+
+SUPADATA_TIMEOUT_SECONDS = float(
+    os.getenv(
+        "SUPADATA_TIMEOUT_SECONDS",
+        "30",
+    )
+)
+
+
 BASE_DIR = Path(__file__).resolve().parents[1]
 
 

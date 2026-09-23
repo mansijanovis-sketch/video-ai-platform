@@ -24,7 +24,11 @@ from ..services.analyzer import analyze_video
 from ..services.analysis_job import run_analysis_job
 from ..services.video_url import acquire_video_from_url
 from ..services.youtube import extract_youtube_video_id
-from .youtube import populate_youtube_analysis
+from .youtube import (
+    populate_youtube_analysis,
+    transcript_http_error,
+)
+from ..services.youtube_transcript import YouTubeTranscriptError
 
 
 router = APIRouter(
@@ -203,7 +207,7 @@ def _add_youtube_video_from_transcript(
                 existing_video.status = "processing"
                 db.commit()
                 populate_youtube_analysis(db, existing_video)
-            except Exception:
+            except Exception as error:
                 logger.exception(
                     "YouTube transcript analysis failed for video %s",
                     existing_video.id,
@@ -215,10 +219,12 @@ def _add_youtube_video_from_transcript(
                 if existing_video:
                     existing_video.status = "failed"
                     db.commit()
+                if isinstance(error, YouTubeTranscriptError):
+                    raise transcript_http_error(error) from error
                 raise HTTPException(
                     status_code=422,
                     detail="Unable to analyze this YouTube tutorial.",
-                )
+                ) from error
 
         return _youtube_response(
             existing_video,
@@ -244,7 +250,7 @@ def _add_youtube_video_from_transcript(
         video.status = "processing"
         db.commit()
         populate_youtube_analysis(db, video)
-    except Exception:
+    except Exception as error:
         logger.exception(
             "YouTube transcript analysis failed for video %s",
             video.id,
@@ -256,10 +262,12 @@ def _add_youtube_video_from_transcript(
         if video:
             video.status = "failed"
             db.commit()
+        if isinstance(error, YouTubeTranscriptError):
+            raise transcript_http_error(error) from error
         raise HTTPException(
             status_code=422,
             detail="Unable to analyze this YouTube tutorial.",
-        )
+        ) from error
 
     return _youtube_response(
         video,
