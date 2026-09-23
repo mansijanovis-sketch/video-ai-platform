@@ -26,3 +26,7 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+
+test_editor_regions/
+test_youtube_app_frames/
