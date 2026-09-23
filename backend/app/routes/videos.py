@@ -23,6 +23,8 @@ from ..services.video_processor import get_video_info
 from ..services.analyzer import analyze_video
 from ..services.analysis_job import run_analysis_job
 from ..services.video_url import acquire_video_from_url
+from ..services.youtube import extract_youtube_video_id
+from .youtube import populate_youtube_analysis
 
 
 router = APIRouter(
@@ -173,6 +175,97 @@ def analyze_uploaded_video(
 # Add Video From URL
 # ==================================================
 
+def _youtube_response(video: Video, message: str):
+    return {
+        "id": video.id,
+        "youtube_url": video.youtube_url,
+        "youtube_video_id": video.youtube_video_id,
+        "source_type": video.source_type,
+        "status": video.status,
+        "message": message,
+    }
+
+
+def _add_youtube_video_from_transcript(
+    url: str,
+    youtube_video_id: str,
+    db: Session,
+):
+    existing_video = (
+        db.query(Video)
+        .filter(Video.youtube_video_id == youtube_video_id)
+        .first()
+    )
+
+    if existing_video:
+        if existing_video.status != "completed":
+            try:
+                existing_video.status = "processing"
+                db.commit()
+                populate_youtube_analysis(db, existing_video)
+            except Exception:
+                logger.exception(
+                    "YouTube transcript analysis failed for video %s",
+                    existing_video.id,
+                )
+                db.rollback()
+                existing_video = db.query(Video).filter(
+                    Video.id == existing_video.id
+                ).first()
+                if existing_video:
+                    existing_video.status = "failed"
+                    db.commit()
+                raise HTTPException(
+                    status_code=422,
+                    detail="Unable to analyze this YouTube tutorial.",
+                )
+
+        return _youtube_response(
+            existing_video,
+            "This YouTube video already exists.",
+        )
+
+    video = Video(
+        filename=f"youtube_{youtube_video_id}",
+        filepath=None,
+        duration=0,
+        fps=0,
+        status="uploaded",
+        youtube_url=url,
+        youtube_video_id=youtube_video_id,
+        source_type="youtube",
+    )
+
+    db.add(video)
+    db.commit()
+    db.refresh(video)
+
+    try:
+        video.status = "processing"
+        db.commit()
+        populate_youtube_analysis(db, video)
+    except Exception:
+        logger.exception(
+            "YouTube transcript analysis failed for video %s",
+            video.id,
+        )
+        db.rollback()
+        video = db.query(Video).filter(
+            Video.id == video.id
+        ).first()
+        if video:
+            video.status = "failed"
+            db.commit()
+        raise HTTPException(
+            status_code=422,
+            detail="Unable to analyze this YouTube tutorial.",
+        )
+
+    return _youtube_response(
+        video,
+        "YouTube video added successfully.",
+    )
+
 @router.post("/url")
 def add_video_from_url(
     url: str,
@@ -193,6 +286,14 @@ def add_video_from_url(
         raise HTTPException(
             status_code=400,
             detail="Only HTTP and HTTPS URLs are supported.",
+        )
+
+    youtube_video_id = extract_youtube_video_id(url)
+    if youtube_video_id:
+        return _add_youtube_video_from_transcript(
+            url=url,
+            youtube_video_id=youtube_video_id,
+            db=db,
         )
 
     try:
