@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timezone
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, field_validator
@@ -7,6 +8,8 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import EarlyAccessSignup
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api",
@@ -61,7 +64,7 @@ def register_early_access(
     signup = EarlyAccessSignup(
         name=payload.name.strip(),
         email=normalized_email,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
 
     try:
@@ -70,6 +73,7 @@ def register_early_access(
         db.refresh(signup)
     except Exception:
         db.rollback()
+        logger.exception("Unable to persist early access registration")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to register early access request.",

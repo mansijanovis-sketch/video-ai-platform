@@ -20,3 +20,5 @@ youtube-transcript-api
 yt-dlp
 
 requests
+faster-whisper
+openai

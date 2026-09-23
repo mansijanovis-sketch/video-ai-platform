@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -27,6 +29,8 @@ router = APIRouter(
     prefix="/videos",
     tags=["youtube"],
 )
+
+logger = logging.getLogger(__name__)
 
 
 def populate_youtube_analysis(
@@ -95,7 +99,11 @@ def create_youtube_video(
                     db,
                     existing_video,
                 )
-            except Exception as error:
+            except Exception:
+                logger.exception(
+                    "YouTube analysis failed for video %s",
+                    existing_video.id,
+                )
                 db.rollback()
                 existing_video = db.query(Video).filter(
                     Video.id == existing_video.id
@@ -105,10 +113,7 @@ def create_youtube_video(
                     db.commit()
                 raise HTTPException(
                     status_code=422,
-                    detail=(
-                        "Unable to analyze this YouTube tutorial. "
-                        f"{error}"
-                    ),
+                    detail="Unable to analyze this YouTube tutorial.",
                 )
 
         return {
@@ -148,7 +153,11 @@ def create_youtube_video(
         video.status = "processing"
         db.commit()
         populate_youtube_analysis(db, video)
-    except Exception as error:
+    except Exception:
+        logger.exception(
+            "YouTube analysis failed for video %s",
+            video.id,
+        )
         db.rollback()
         video = db.query(Video).filter(
             Video.id == video.id
@@ -158,10 +167,7 @@ def create_youtube_video(
             db.commit()
         raise HTTPException(
             status_code=422,
-            detail=(
-                "Unable to analyze this YouTube tutorial. "
-                f"{error}"
-            ),
+            detail="Unable to analyze this YouTube tutorial.",
         )
 
     return {

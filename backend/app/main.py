@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from .config import (
     CORS_ORIGINS,
@@ -10,7 +11,7 @@ from .config import (
     UPLOAD_DIR,
 )
 
-from .database import Base, engine
+from .database import Base, SessionLocal, engine
 from . import models
 from .routes.ask import router as ask_router
 from .routes.early_access import router as early_access_router
@@ -75,4 +76,21 @@ def root():
 
     return {
         "message": "Video AI API running"
+    }
+
+
+@app.get("/health")
+def health_check():
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+    except Exception:
+        return {
+            "status": "degraded",
+            "database": "unavailable",
+        }
+
+    return {
+        "status": "ok",
+        "database": "ok",
     }

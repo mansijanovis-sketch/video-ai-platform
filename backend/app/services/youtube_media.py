@@ -4,6 +4,8 @@ import os
 
 import yt_dlp
 
+from ..config import UPLOAD_DIR
+
 
 def get_youtube_video_info(
     youtube_url: str,
@@ -36,7 +38,7 @@ def get_youtube_video_info(
 
 def download_youtube_video(
     youtube_url: str,
-    output_dir: str = "uploads/youtube",
+    output_dir: str | None = None,
 ) -> dict:
     """
     Download a video-only H.264 MP4 stream suitable
@@ -45,6 +47,8 @@ def download_youtube_video(
     The downloaded file is intentionally kept separate
     from the existing upload pipeline.
     """
+
+    output_dir = output_dir or os.path.join(UPLOAD_DIR, "youtube")
 
     os.makedirs(
         output_dir,

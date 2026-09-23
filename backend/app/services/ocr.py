@@ -6,7 +6,8 @@ import pytesseract
 from ..config import TESSERACT_PATH
 
 
-pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+if TESSERACT_PATH:
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 
 
 OCR_MAX_DIMENSION = 1600

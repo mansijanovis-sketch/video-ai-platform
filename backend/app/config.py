@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -15,19 +16,31 @@ if not DATABASE_URL:
 
 TESSERACT_PATH = os.getenv(
     "TESSERACT_PATH",
-    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    "",
 )
+
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+
+
+PORT = int(os.getenv("PORT", "8000"))
 
 
 UPLOAD_DIR = os.getenv(
     "UPLOAD_DIR",
-    "uploads",
+    str(BASE_DIR / "uploads"),
 )
 
 
 FRAMES_DIR = os.getenv(
     "FRAMES_DIR",
-    "frames",
+    str(BASE_DIR / "frames"),
+)
+
+
+YOLO_MODEL_PATH = os.getenv(
+    "YOLO_MODEL_PATH",
+    str(BASE_DIR / "yolo11n.pt"),
 )
 
 

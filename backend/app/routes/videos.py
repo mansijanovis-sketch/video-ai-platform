@@ -1,6 +1,7 @@
 import os
 import shutil
 import uuid
+import logging
 
 from pathlib import Path
 
@@ -28,6 +29,8 @@ router = APIRouter(
     prefix="/videos",
     tags=["Videos"],
 )
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -91,13 +94,15 @@ def upload_video(
 
         info = get_video_info(filepath)
 
-    except Exception as e:
+    except Exception:
         if os.path.exists(filepath):
             os.remove(filepath)
 
+        logger.exception("Unable to process uploaded video")
+
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid video file: {str(e)}",
+            detail="Invalid video file.",
         )
 
     video = Video(
@@ -207,7 +212,7 @@ def add_video_from_url(
             filepath
         )
 
-    except Exception as e:
+    except Exception:
 
         if "filepath" in locals():
             if filepath and os.path.exists(filepath):
@@ -216,9 +221,10 @@ def add_video_from_url(
                 except OSError:
                     pass
 
+        logger.exception("Unable to acquire video from URL")
         raise HTTPException(
             status_code=400,
-            detail=f"Unable to acquire video from URL: {str(e)}",
+            detail="Unable to acquire video from URL.",
         )
 
     source_type = result.get(

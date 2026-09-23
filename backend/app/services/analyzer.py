@@ -1,5 +1,6 @@
 import os
 
+from ..config import FRAMES_DIR
 from .smart_sampling import smart_sample_video
 from .detector import detect_objects
 from .ocr import extract_text
@@ -28,7 +29,7 @@ def analyze_video(
         transcript_segments = []
 
     output_dir = os.path.join(
-        "frames",
+        FRAMES_DIR,
         str(video_id),
     )
 
